@@ -1,6 +1,5 @@
 #include <cmath>
 #include <raylib/raylib.h>
-#include <thread>
 
 
 #define RAYGUI_IMPLEMENTATION
@@ -8,30 +7,13 @@
 
 using namespace std;
 
-#define WINDW_REAL 400
-#define WINDH_REAL 400
-
-//for calculations
-#define WINDW 400
-#define WINDH 400
-
-#define LINE_NUM 5
-
-const float W_LINE_SPAC = (float)WINDW_REAL/LINE_NUM;
-const float H_LINE_SPAC = (float)WINDH_REAL/LINE_NUM;
+#define WINDW 600
+#define WINDH 600
 
 float x = 0;
 float y = 0;
 
-void DrawVertGridLine(float offset){
-    DrawLine(offset+fmod(x*WINDW_REAL,W_LINE_SPAC),0,offset+fmod(x*WINDW_REAL,W_LINE_SPAC),WINDH_REAL,GRAY);
-}
-
-void DrawHorizGridLine(float offset){
-    DrawLine(0,offset+fmod(y*WINDH_REAL,H_LINE_SPAC),WINDW_REAL,offset+fmod(y*WINDH_REAL,H_LINE_SPAC),GRAY);
-}
-
-float zoom = 1;
+float zoom = 100;
 
 float resolution = 1;
 
@@ -69,45 +51,43 @@ float oldres = -1;
 
 bool cinematicmode = false;
 
-void ThreadBuffer(Color *data,int startrow,int rows){
-    for(int iy=startrow;iy<rows;iy++){
-        for(int ix=0;ix<WINDW;ix++){
-            int mandelbrot = getMandelbrot((float)ix/WINDW/zoom-x,(float)iy/WINDH/zoom-y);
-            data[iy*WINDW+ix] = (Color){(unsigned char)(mandelbrot*50),(unsigned char)(mandelbrot*10),(unsigned char)(mandelbrot*255),(unsigned char)((mandelbrot/(10*resolution))*255)};
-            if(mandelbrot == 0) {(data[iy*WINDW+ix]).a = 255;}
-        }
-    }
-}
 
-int main(int argc, char* argv[]){
-    const int NUM_THREADS = atoi(argv[1]);
+int main(){
 
-#define THREAD_LOWSTEP floor(WINDH/NUM_THREADS)
-#define THREAD_HIGHSTEP ceil(WINDH/NUM_THREADS)
-
-
-    InitWindow(WINDW_REAL, WINDH_REAL, "Raylib - Mandelbrot set");
+    InitWindow(WINDW, WINDH, "Raylib - Mandelbrot set");
 
     SetWindowIcon(LoadImage("icon.png"));
+const Shader mandelbrot_fs = LoadShader(NULL,"./mandelbrot.fs");
+    int dwindw=WINDW;
+    int dwindh=WINDH;
+    SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "x"), &x, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "y"), &y, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "zoom"), &zoom, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "resolution"), &resolution, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "WINDW"), &dwindw, SHADER_UNIFORM_INT);
+    SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "WINDH"), &dwindh,SHADER_UNIFORM_INT);
+
 
     SetTargetFPS(240);
-    Image image = GenImageColor(WINDW, WINDH, RED);  // Initial image filled with red
-    Texture2D pixels = LoadTextureFromImage(image);  // Create texture from the image
-    SetTextureFilter(pixels, 0);
-    SetTextureWrap(pixels, TEXTURE_WRAP_CLAMP);
-    UnloadImage(image); // Once the texture is loaded, unload the image
-    Color pixels_data[WINDW*WINDH];
 
     while(!WindowShouldClose()){
 
         if(IsKeyDown(KEY_W)){
-            y+=velocity/40;
+            y+=velocity/25/(zoom/100);
         }if(IsKeyDown(KEY_S)){
-            y-=velocity/40;
+            y-=velocity/25/(zoom/100);
         }if(IsKeyDown(KEY_A)){
-            x+=velocity/40;
+            x+=velocity/25/(zoom/100);
         }if(IsKeyDown(KEY_D)){
-            x-=velocity/40;
+            x-=velocity/25/(zoom/100);
+        }if(IsKeyDown(KEY_G)){
+            resolution+=velocity/20;
+        }if(IsKeyDown(KEY_H)){
+            resolution-=velocity/20;
+        }if(IsKeyDown(KEY_C)){
+            zoom+=(mwheel_mult*zoom)/30;
+        }if(IsKeyDown(KEY_V)){
+            zoom-=(mwheel_mult*zoom)/30;
         }
 
         if(IsKeyPressed(KEY_F11)){
@@ -116,43 +96,32 @@ int main(int argc, char* argv[]){
 
         Vector2 mwheel = GetMouseWheelMoveV();        
 
-            zoom-= mwheel.x*mwheel_mult;
-            zoom+= mwheel.y*mwheel_mult;
+            zoom-= mwheel.x*(mwheel_mult*zoom);
+            zoom+= mwheel.y*(mwheel_mult*zoom);
 
         if(x != oldx || y != oldy || zoom != oldzoom || resolution != oldres){
-            thread* threads[NUM_THREADS];
-            for(int i=0;i<NUM_THREADS;i++){
-                if(i==NUM_THREADS){
-                    thread t (ThreadBuffer,pixels_data, THREAD_LOWSTEP*i, WINDH);
-                    threads[i] = new thread (ThreadBuffer,pixels_data, THREAD_LOWSTEP*i, WINDH);
-                    break;
-                }
-                threads[i] = new thread (ThreadBuffer,pixels_data, THREAD_LOWSTEP*i, THREAD_HIGHSTEP*(i+1));
-            }
-            for(thread *t : threads){
-                t->join();
-            }
-            UpdateTexture(pixels, pixels_data);
+            SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "x"), &x, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "y"), &y, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "zoom"), &zoom, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "resolution"), &resolution, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "WINDW"), &dwindw, SHADER_UNIFORM_INT);
+            SetShaderValue(mandelbrot_fs, GetShaderLocation(mandelbrot_fs, "WINDH"), &dwindh,SHADER_UNIFORM_INT);
         }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            DrawTexturePro(pixels,{0,0,WINDW,WINDH},{0,0,WINDW_REAL,WINDH_REAL},{0,0},0.0f,WHITE);
-
+            BeginShaderMode(mandelbrot_fs);
+                DrawRectangle(0, 0, WINDW, WINDH, WHITE);
+            EndShaderMode();
         if(!cinematicmode){
-            GuiSliderBar({220,330,140,10}, "Mousewheel speed", TextFormat("%.2f",mwheel_mult*10), &mwheel_mult, 0.1, 50);
-            oldres = resolution;
-            GuiSliderBar({220,350,140,10}, "Resolution", TextFormat("%.2f",resolution), &resolution, 0, 15);
-            GuiSliderBar({220,370,140,10}, "Speed", TextFormat("%.4f",velocity), &velocity, 0.0001, 1);
-                        
             DrawFPS(5, 5);
             
             DrawText(TextFormat("x: %f",x),5,20,20,GRAY); 
             DrawText(TextFormat("y: %f",y),5,35,20,GRAY); 
-            DrawText(TextFormat("THREADS: %i",NUM_THREADS),5,50,20,GRAY); 
             
-            DrawText("Press F11 for cinematic mode",5,385,10,GRAY);
+            DrawText(TextFormat("Resolution: %f", resolution),5,WINDH-45,20,GRAY);
+            DrawText("Press F11 for cinematic mode",5,WINDH-15,10,GRAY);
 
         }
         EndDrawing();
@@ -160,6 +129,7 @@ int main(int argc, char* argv[]){
         oldx = x;
         oldy = y;
         oldzoom = zoom;
+        oldres = resolution;
     }
 
     return 0;
